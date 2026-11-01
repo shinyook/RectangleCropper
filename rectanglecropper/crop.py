@@ -1,321 +1,211 @@
-from PIL import Image
-from collections import deque
-import numpy as np
+"""Background-based rectangle extraction with vectorized connected components."""
+from pathlib import Path
 import warnings
+
+import numpy as np
+from PIL import Image, ImageOps
+from scipy import ndimage
 
 
 class ImageThresholdUtil:
-    """
-    It has to do with the image threshold. Threshold here means filtering,
-    which finds the pixels to be filtered out. So this class has static methods
-    related to the threshold and cooperates in context.
-    """
-
     @staticmethod
-    def get_threshold_pixels(row, col, image, rep_count, target_rate) -> list:
-        """
-        It does the job of finding a threshold in the image.
-        It has an algorithm that reads an image and calculates
-        which pixels are used the most and what their proportions are.
-
-        :param row: int
-            image's row size
-        :param col: int
-            image's column size
-        :param image: ndarray
-            image loaded by Pillow Image module and change to numpy array
-        :param rep_count: int
-            Indicates the number of candidates. The candidate group is a group of pixels
-            that can become threshold points, and is an argument for
-            how much this candidate group will be accommodated.
-        :param target_rate: int
-            Check how many pixels in the image are being used.
-            Then divide this number of used pixels by total image and multiply by
-            100 to calculate the percentage. In other words, the ratio of pixels
-            is calculated, and it is a setting argument for which ratio to set as a valid value.
-
-        :return: ndarray
-            Output array which has threshold points
-        """
-        area = row * col
-        values, counts = np.unique(image, return_counts=True)
-        candidate_count = min(rep_count, len(values))
-        if candidate_count == 0:
-            return values[:0]
-        candidate_indices = np.argsort(counts, kind='stable')[-candidate_count:]
-        ratio_counts = counts[candidate_indices] / area * 100
-        return values[candidate_indices[ratio_counts > target_rate]]
+    def get_threshold_pixels(row, col, image, rep_count, target_rate):
+        """Return the most frequent intensities exceeding target_rate percent."""
+        # Rounded RGB means are integers in [0, 255]; a histogram avoids sorting
+        # every pixel and preserves the previous stable tie-breaking order.
+        counts = np.bincount(np.asarray(image, dtype=np.uint8).ravel(), minlength=256)
+        values = np.flatnonzero(counts)
+        candidates = values[np.argsort(counts[values], kind='stable')[-rep_count:]]
+        return candidates[counts[candidates] / (row * col) * 100 > target_rate]
 
 
 class RectangleImageCrop:
-    """
-    This class was created to crop an image into a rectangle.
-    After opening the image, it automatically detects the background, then detects the effective area and crops it.
-    Background detection works based on rules. Right now it's based on how many coherent pixels are found.
-    Then, the image is converted to a NumPy array rather than a list,
-    and the average of the RGB values is calculated and the pixels are merged into one.
-    """
+    """Extract connected foreground regions, returning Pillow crop boxes.
 
-    __direction_row = (0, 1, 0, -1)
-    __direction_col = (1, 0, -1, 0)
+    The default ``background_mode='legacy'`` retains RGB-mean detection.
+    ``'border'`` estimates RGB background colors from the outermost pixels,
+    keeping similarly bright but differently colored foregrounds distinct.
+    """
 
     def __init__(self):
         self.__img = None
-        self.__pix = None
-        self.__row = self.__col = None
-        self.__img_field = None
+        self.__rgb = None
         self.__threshold_pixels = None
         self.__save_points = []
+        self.__auto_threshold_detection = True
 
     def open(self, image_path, auto_threshold_detection=True) -> None:
-        """
-        The image will open. The way to open it is using the PIL library.
-        And this image will be converted to RGB option.
+        """Open an image, apply EXIF orientation, and clear previous results.
 
-        :param image_path:
-            The path where the image file exists.
-        :param auto_threshold_detection:
-            Option to automatically detect thresholds. When the value of this option is True,
-            the threshold is selected based on the rules. In case of False, the function has not been added yet.
-            I plan to add an option to let users enter their own thresholds.
-        :return: None
-            There is no return value. It is assigned to a class internal variable.
+        With auto_threshold_detection=False, crop() requires background_colors.
+        Coordinates refer to the oriented image. Transparency is preserved in
+        output, but background detection uses the image's RGB channels.
         """
         with Image.open(image_path) as image:
-            self.__img = image.convert('RGB')
+            oriented = ImageOps.exif_transpose(image)
+            self.__img = oriented.convert('RGBA' if 'A' in oriented.getbands()
+                                          or 'transparency' in oriented.info else 'RGB')
+        self.__rgb = np.asarray(self.__img.convert('RGB'))
         self.__save_points = []
         self.__threshold_pixels = None
-        self.__row, self.__col = self.__img.size
-        self.__numpy_mean_variant()
+        self.__auto_threshold_detection = auto_threshold_detection
 
-    def __numpy_mean_variant(self) -> None:
-        """
-        Reads an image file and converts it to a NumPy array. During the conversion process,
-        only one value is extracted as the average value of the RGB channels.
+    @staticmethod
+    def __integer(name, value, minimum=1, maximum=None):
+        if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+            raise TypeError(f'{name} must be an integer')
+        if value < minimum or (maximum is not None and value > maximum):
+            raise ValueError(f'{name} must be >= {minimum}' +
+                             (f' and <= {maximum}' if maximum is not None else ''))
 
-        :return: None
-            There is no return value. It is assigned to a class internal variable.
-        """
-        self.__img_field = np.zeros((self.__col, self.__row), dtype=bool)
-        average_pixel_values = np.mean(np.array(self.__img), axis=2, keepdims=True)
-        self.__pix = np.rint(np.concatenate([average_pixel_values], axis=2))
-
-    def __validate_image_size(self, upper_left_point, bottom_right_point) -> bool:
-        """
-        It reads the width and height of the extracted image and verifies
-        whether the image meets the conditions.
-
-        :return: bool
-            It returns True or False according to the verification result.
-        """
-        row1, col1 = upper_left_point
-        row2, col2 = bottom_right_point
-        width = col2 - col1
-        height = row2 - row1
-        return width >= self.__min_width and height >= self.__min_height
-
-    def __validate_image_pixel(self, row, col):
-        """
-        Algorithm for traversing image pixels. It checks the validity of image pixels by mixing
-        an algorithm called breadth-first search and a rule-based algorithm.
-
-        :param row: int
-            image's row size
-        :param col: int
-            image's column size
-        :return: list, bool
-            Returns a list containing the coordinate values of the image, or False.
-        """
-        self.__img_field[row][col] = 1
-        min_row = max_row = row
-        min_col = max_col = col
-        q = deque()
-        q.append((row, col))
-        while q:
-            row_x, row_y = q.popleft()
-            min_row = min(min_row, row_x)
-            max_row = max(max_row, row_x)
-            min_col = min(min_col, row_y)
-            max_col = max(max_col, row_y)
-            for i in range(4):
-                mx = row_x + self.__direction_row[i]
-                my = row_y + self.__direction_col[i]
-                if 0 <= mx < self.__col and 0 <= my < self.__row:
-                    if self.__img_field[mx][my] == 0 and self.__validate_pixel(mx, my):
-                        self.__img_field[mx][my] = 1
-                        q.append((mx, my))
-        # Pillow crop boxes exclude the right and bottom edges.
-        temp_upper_bottom_points = [[min_row, min_col], [max_row + 1, max_col + 1]]
-        if self.__validate_image_size(temp_upper_bottom_points[0], temp_upper_bottom_points[1]):
-            return temp_upper_bottom_points
+    def __border_colors(self, candidate_count, occupancy_rate):
+        height, width = self.__rgb.shape[:2]
+        # Every perimeter pixel appears exactly once, including 1-pixel images.
+        if height == 1:
+            border = self.__rgb[0]
+        elif width == 1:
+            border = self.__rgb[:, 0]
         else:
-            return False
+            border = np.concatenate((self.__rgb[0], self.__rgb[-1],
+                                     self.__rgb[1:-1, 0], self.__rgb[1:-1, -1]))
+        # Quantize only the perimeter into 16-level RGB bins to group small
+        # variations; represent each bin with its actual mean RGB value.
+        quantized = border.astype(np.int32) // 16
+        keys = quantized[:, 0] * 256 + quantized[:, 1] * 16 + quantized[:, 2]
+        counts = np.bincount(keys, minlength=4096)
+        occupied = np.flatnonzero(counts)
+        candidates = occupied[np.argsort(counts[occupied], kind='stable')[-candidate_count:]]
+        candidates = candidates[counts[candidates] / len(border) * 100 > occupancy_rate]
+        channels = [np.bincount(keys, weights=border[:, channel], minlength=4096)
+                    for channel in range(3)]
+        sums = np.stack(channels, axis=1)
+        return np.rint(sums[candidates] / counts[candidates, None]).astype(np.int16)
 
-    def __validate_pixel(self, row, col) -> bool:
+    def crop(self, min_crop_width=100, min_crop_height=100, occupancy_rate=10,
+             candidate_threshold_group=3, pixel_sensitivity=10, *,
+             background_mode='legacy', background_colors=None, min_area=1,
+             padding=0, connectivity=4):
+        """Detect foreground and store rectangles in historical left-to-right order.
+
+        background_mode: 'legacy' (global RGB mean histogram) or 'border' (RGB
+            colors on the perimeter, grouped into 16-level bins). occupancy_rate
+            is a strict percentage cutoff, over all pixels or perimeter pixels
+            respectively; it must be below 100.
+        background_colors: optional sequence of RGB triples in [0, 255],
+            overriding automatic detection. A pixel is background if every
+            channel differs by at most pixel_sensitivity from any supplied color.
+        min_area: minimum number of actual foreground pixels per component.
+        padding: pixels added on all sides, clipped to image boundaries.
+        connectivity: 4 for edge neighbors, 8 to include diagonal neighbors.
+
+        Minimum width/height and area are tested before padding. Existing
+        positional arguments keep their original meaning. No file is written.
         """
-        Check the validity of the pixel values along with the threshold.
-        Pixel sensitivity relates to how much blurring can be achieved at
-        a threshold point, and acts as a masking agent.
-
-        :param row: int
-            image's row size
-        :param col: int
-            image's column size
-        :return: bool
-            Returns the validation value as a bool type.
-        """
-        for pixel in self.__threshold_pixels:
-            if pixel - self.__pixel_sensitivity <= self.__pix[row, col] <= pixel + self.__pixel_sensitivity:
-                return False
-        return True
-
-    def __iterate_pixel(self) -> None:
-        """
-        A double loop for traversing the pixels. A check is being made on the pixels that have been traversed.
-
-        :return: None
-            Save the upper and lower pixel positions of the image in the member variable save_points.
-            It doesn't return any value. Save the upper and lower pixel positions of the image
-            If you want to save the image based on the extracted crop points values, call the 'save' method.
-            If you want to receive only the crop points value, call 'get_crop_points'.
-        """
-        for j in range(self.__row):
-            for i in range(self.__col):
-                if self.__img_field[i][j] == 0 and self.__validate_pixel(i, j) is True:
-                    result = self.__validate_image_pixel(i, j)
-                    if result:
-                        self.__save_points.append(result)
-
-    def crop(self, min_crop_width=100, min_crop_height=100, occupancy_rate=10, candidate_threshold_group=3, pixel_sensitivity=10):
-        """
-        This method cuts the image into a rectangular shape. A separate function call is required to save the image
-
-        :param min_crop_width: int
-            The minimum width of the image you want to crop. Values below this are ignored.
-        :param min_crop_height: int
-            The minimum height of the image you want to crop. Values below this are ignored.
-        :param occupancy_rate: int
-            When choosing a threshold, it is affected by the frequency of pixels across the image.
-            It indicates how much of a single or multiple background pixels that are not
-            in the image to be cropped out of the overall image. For example, if the percentage of white background
-            in the entire image is more than 10%, this number can be regarded as 10.
-        :param candidate_threshold_group: int
-            It is an option to decide how many threshold candidates to extract when calculating
-            the threshold along with the above occupancy_rate.
-            For example, if this value is 5, up to 5 threshold pixels are extracted.
-        :param pixel_sensitivity: int
-            While traversing the pixels, the verification process for the threshold is included,
-            and it is an option for how much blur to apply this threshold.
-        :exception TypeError: If the arguments are not int.
-        :exception ValueError: If the arguments are not positive, or If the argument values are too large or too small
-        :exception RuntimeError: If threshold points are emtpy.
-        :return: None
-            Save the upper and lower pixel positions of the image in the member variable save_points.
-        """
-
-        if not isinstance(min_crop_width, int):
-            raise TypeError("min_width must be a int")
-        if min_crop_width <= 0:
-            raise ValueError("min_width must be a positive. bigger than 0")
-
-        if not isinstance(min_crop_height, int):
-            raise TypeError("min_width must be a int")
-        if min_crop_height <= 0:
-            raise ValueError("min_width must be a positive. bigger than 0")
-
-        if not isinstance(occupancy_rate, int):
-            raise TypeError("occupancy_rate must be a int")
-        if occupancy_rate <= 0:
-            raise ValueError("occupancy_rate must be a positive. bigger than 0")
-
-        if not isinstance(candidate_threshold_group, int):
-            raise TypeError("candidate_threshold_group must be a int")
-        if candidate_threshold_group <= 0:
-            raise ValueError("candidate_threshold_group must be a positive. bigger than 0")
-
-        if not isinstance(pixel_sensitivity, int):
-            raise TypeError("candidate_threshold_group must be a int")
-        if pixel_sensitivity <= 0:
-            raise ValueError("pixel_sensitivity must be a positive. bigger than 0")
-
-        if occupancy_rate < 7:
-            warnings.warn(
-                "occupancy_rate is too low. Performance degradation is possible. "
-                "It is recommended to have a value of 10 or more.",)
-        if candidate_threshold_group > 5:
-            warnings.warn(
-                "candidate_threshold_group is too large. Performance degradation is possible. "
-                "It is recommended to have a value of 5 or smaller.",
-            )
-
-        if pixel_sensitivity > 10:
-            warnings.warn(
-                "pixel_sensitivity is too large. Performance degradation is possible. "
-                "effective range too large. The drop in accuracy can be large. "
-                "It is recommended to have a value of between 5 and 10")
-
-        if pixel_sensitivity < 5:
-            warnings.warn(
-                "pixel_sensitivity is too small. Performance degradation is possible. "
-                "effective range too large. The drop in accuracy can be large. "
-                "It is recommended to have a value of between 5 and 10")
-
+        for name, value in [('min_crop_width', min_crop_width),
+                            ('min_crop_height', min_crop_height),
+                            ('candidate_threshold_group', candidate_threshold_group),
+                            ('min_area', min_area)]:
+            self.__integer(name, value)
+        self.__integer('occupancy_rate', occupancy_rate, 1, 99)
+        self.__integer('pixel_sensitivity', pixel_sensitivity, 0, 255)
+        self.__integer('padding', padding, 0)
+        self.__integer('connectivity', connectivity, 4, 8)
+        if connectivity not in (4, 8):
+            raise ValueError('connectivity must be 4 or 8')
+        if background_mode not in ('legacy', 'border'):
+            raise ValueError("background_mode must be 'legacy' or 'border'")
+        colors = None
+        if background_colors is not None:
+            colors = np.asarray(background_colors)
+            if (colors.ndim != 2 or colors.shape[1] != 3 or len(colors) == 0
+                    or not np.issubdtype(colors.dtype, np.number)
+                    or np.iscomplexobj(colors)):
+                raise ValueError('background_colors must be a nonempty sequence of RGB triples')
+            if not np.all(np.isfinite(colors)) or np.any((colors < 0) | (colors > 255)):
+                raise ValueError('background_colors channels must be finite values in [0, 255]')
+            if np.any(colors != np.rint(colors)):
+                raise ValueError('background_colors channels must be integers')
+            colors = colors.astype(np.int16)
         if self.__img is None:
-            raise RuntimeError("open method must be called before crop.")
+            raise RuntimeError('open method must be called before crop.')
+        if colors is None and not self.__auto_threshold_detection:
+            raise ValueError('background_colors is required when auto_threshold_detection=False')
+        if occupancy_rate < 7:
+            warnings.warn('occupancy_rate is too low. More background candidates may be included.')
+        if candidate_threshold_group > 5:
+            warnings.warn('candidate_threshold_group is too large. More colors may be classified as background.')
+        if pixel_sensitivity > 10 or pixel_sensitivity < 5:
+            warnings.warn('pixel_sensitivity is outside the recommended range of 5 to 10.')
 
         self.__save_points = []
-        self.__img_field.fill(False)
-        self.__min_width = min_crop_width
-        self.__min_height = min_crop_height
-        self.__occupancy_rate = occupancy_rate
-        self.__candidate_threshold_group = candidate_threshold_group
-        self.__pixel_sensitivity = pixel_sensitivity
-        self.__threshold_pixels = ImageThresholdUtil.get_threshold_pixels(self.__row, self.__col, self.__pix, self.__candidate_threshold_group, self.__occupancy_rate)
-        if self.__threshold_pixels.size == 0:
-            raise RuntimeError("threshold pixels are empty. No threshold pixels were detected. "
-                               "drop a occupancy_rate value")
-        self.__iterate_pixel()
+        self.__threshold_pixels = None
+        height, width = self.__rgb.shape[:2]
+        if colors is None and background_mode == 'legacy':
+            intensity = np.rint(self.__rgb.mean(axis=2)).astype(np.uint8)
+            thresholds = ImageThresholdUtil.get_threshold_pixels(
+                width, height, intensity, candidate_threshold_group, occupancy_rate)
+            foreground = np.ones((height, width), dtype=bool)
+            intensity = intensity.astype(np.int16)
+            for value in thresholds:
+                foreground &= np.abs(intensity - int(value)) > pixel_sensitivity
+        else:
+            thresholds = colors if colors is not None else self.__border_colors(
+                candidate_threshold_group, occupancy_rate)
+            foreground = np.ones((height, width), dtype=bool)
+            rgb = self.__rgb.astype(np.int16)
+            for color in thresholds:
+                foreground &= np.any(np.abs(rgb - color) > pixel_sensitivity, axis=2)
+        self.__threshold_pixels = thresholds
+        if len(thresholds) == 0:
+            raise RuntimeError('threshold pixels are empty. No threshold pixels were detected. '
+                               'drop a occupancy_rate value or provide background_colors')
+
+        structure = ndimage.generate_binary_structure(2, 1 if connectivity == 4 else 2)
+        labels, count = ndimage.label(foreground, structure=structure)
+        areas = np.bincount(labels.ravel(), minlength=count + 1) if min_area > 1 else None
+        results = []
+        for label, region in enumerate(ndimage.find_objects(labels, max_label=count), 1):
+            rows, cols = region
+            if cols.stop - cols.start < min_crop_width or rows.stop - rows.start < min_crop_height:
+                continue
+            if areas is not None and areas[label] < min_area:
+                continue
+            first_row = rows.start + np.flatnonzero(labels[rows, cols.start] == label)[0]
+            box = (max(0, cols.start - padding), max(0, rows.start - padding),
+                   min(width, cols.stop + padding), min(height, rows.stop + padding))
+            results.append(((cols.start, int(first_row)), box))
+        self.__save_points = [box for _, box in sorted(results)]
+
+    def iter_crops(self):
+        """Yield independent Pillow images without saving all crops to disk."""
+        if self.__img is None:
+            raise RuntimeError('open method must be called before iter_crops.')
+        for box in self.__save_points:
+            yield self.__img.crop(box)
 
     def save(self, saved_path, filename, saved_format) -> None:
-        """
-        This method saves the image. Since there can be many images,
-        they are saved with an incrementing number after the file name.
-        For example, crop_1.jpeg, crop_2.jpeg
+        """Save crops as filename_1.ext, creating the output directory if needed.
 
-        :param saved_path: str
-            This is the path to the file you want to save.
-        :param filename: str
-            File name to save
-        :param saved_format: format
-            File format to save
-        :return: None
+        RGBA crops saved as JPEG are composited onto white.
         """
-        for idx, point in enumerate(self.__save_points):
-            box = (point[0][1], point[0][0], point[1][1], point[1][0])
-            crop_img = self.__img.crop(box)
-            saved_filename = filename + '_' + str(idx + 1) + '.' + saved_format.lower()
-            crop_img.save(saved_path + '/' + saved_filename, format=saved_format)
+        directory = Path(saved_path)
+        directory.mkdir(parents=True, exist_ok=True)
+        image_format = saved_format.upper()
+        if image_format == 'JPG':
+            image_format = 'JPEG'
+        for idx, image in enumerate(self.iter_crops(), 1):
+            if image_format == 'JPEG' and image.mode == 'RGBA':
+                background = Image.new('RGB', image.size, 'white')
+                background.paste(image, mask=image.getchannel('A'))
+                image = background
+            image.save(directory / f'{filename}_{idx}.{saved_format.lower()}', format=image_format)
 
-    def get_threshold_pixels(self) -> list:
-        """
-        Get the extracted threshold.
-
-        :exception RuntimeError: If threshold points are emtpy.
-        :return: list
-            extracted threshold points
-        """
+    def get_threshold_pixels(self):
+        """Return a copy of detected intensities, or RGB triples in RGB modes."""
         if self.__threshold_pixels is None:
-            raise RuntimeError("threshold pixels are None. crop method must be done before this method.")
-        return self.__threshold_pixels
+            raise RuntimeError('threshold pixels are None. crop method must be done before this method.')
+        return self.__threshold_pixels.copy()
 
     def get_crop_points(self) -> list:
-        """
-        Get the crop points
-
-        :return: list
-            extracted crop points
-        """
-        points = []
-        for point in self.__save_points:
-            points.append((point[0][1], point[0][0], point[1][1], point[1][0]))
-        return points
+        """Return (left, top, right, bottom) boxes; right/bottom are exclusive."""
+        return list(self.__save_points)

@@ -60,12 +60,74 @@ Done!
 
 ## Performance
 
-Unless you need a lot of image processing, I recommend using this library. 
-However, performance cannot be guaranteed. Because this library is going through the pixel-based search process. 
-In Python, the cost of this process is very high. It works by converting to NumPy inside, not a list, but it doesn't change the fact that it's expensive. 
-If you process many images at once, the memory may not be able to support it or it will take a very long time. 
-Also, the larger the image size, the longer the cropping process takes. To solve the above cost problem, 
-I will make a library of the same function written in Golang which is at least 5-7 times faster and will distribute it soon. thank you.
+Version 1.1 replaces per-pixel Python traversal with NumPy background masks and
+SciPy connected-component labeling. The default mode preserves the legacy
+RGB-mean heuristic and crop ordering; a new RGB border mode is available below.
+
+Local crop-only measurements on two synthetic images (two rectangular objects,
+three repeats, median, Python 3.10 on macOS) against the corrected 1.0 code in
+commit `efb2ff7`:
+
+| Image | Previous | 1.1 | Speedup |
+| --- | --- | --- | --- |
+| 256 × 256 | 196.4 ms | 1.76 ms | 111× |
+| 512 × 512 | 790.1 ms | 5.79 ms | 137× |
+
+Both implementations returned identical boxes. Importing, opening, and saving
+images are excluded. These are reproducible fixture results, not guarantees for
+all images; images with many tiny components have additional per-component cost.
+SciPy adds an installation dependency and label storage proportional to image
+area. Run `python benchmarks/benchmark_crop.py --compare-with /path/to/old/crop.py`
+to compare locally.
+
+## RGB background detection and output controls
+
+```python
+from rectanglecropper.crop import RectangleImageCrop
+
+cropper = RectangleImageCrop()
+cropper.open('images/image1.png')
+cropper.crop(
+    background_mode='border',  # infer background RGB colors from the perimeter
+    min_crop_width=40,
+    min_crop_height=40,
+    min_area=1600,             # actual foreground pixels, not bounding-box area
+    padding=8,                # clipped to image boundaries
+    connectivity=8,           # include diagonal neighbors; default is 4
+)
+cropper.save('output/crops', 'object', 'png')  # creates directories as needed
+
+# Or work directly with independent Pillow images, one crop at a time:
+for image in cropper.iter_crops():
+    print(image.size)
+```
+
+Border mode groups outermost pixels into 16-level RGB bins, averages each bin's
+actual colors, and selects up to `candidate_threshold_group` bins whose share of
+the perimeter exceeds `occupancy_rate`. `pixel_sensitivity` is the allowed
+per-channel distance from those RGB colors. It can distinguish colors with equal
+RGB means, and a large central foreground object does not dominate the background
+estimate. Backgrounds should still be relatively uniform; an object covering the
+perimeter can bias the estimate. For complex backgrounds, set explicit colors:
+
+```python
+cropper.open('images/image1.png', auto_threshold_detection=False)
+cropper.crop(
+    background_colors=[(255, 255, 255), (240, 240, 240)],
+    pixel_sensitivity=10,
+)
+```
+
+Manual colors override automatic detection; disabling automatic detection now
+requires them. Existing positional crop arguments and the default `'legacy'`
+mode retain RGB-mean behavior. `pixel_sensitivity=0` enables exact matching.
+`occupancy_rate` accepts integers 1–99. Minimum dimensions and `min_area` are
+applied before padding; padded boxes can overlap and are not merged.
+
+EXIF orientation is applied when opening an image, so all coordinates refer to
+the displayed orientation. PNG crops retain alpha; JPEG crops are composited onto
+white. Detection uses RGB channels, including RGB stored under transparent
+pixels; transparency alone is not a foreground/background signal.
 
 ## Advanced Usage
 
@@ -140,7 +202,7 @@ Many features will be added in the future.
 If you have any problems, I'd appreciate it if you could leave them in the issue.
 ## Development and regression tests
 
-Run the regression suite from the repository root after installing NumPy and Pillow:
+Run the regression suite from the repository root after installing NumPy, Pillow, and SciPy (`pip install -e .`):
 
 ```sh
 python -m unittest discover -s tests -v
@@ -152,6 +214,6 @@ so a crop exactly equal to `min_crop_width` or `min_crop_height` is accepted.
 Each `open()` clears previous results, and each `crop()` recomputes results for
 that image using the supplied options.
 
-CI checks the original dependency versions on Python 3.9 and current NumPy/Pillow
-versions on Python 3.10 and 3.13. The package's dependency pins have not yet been
-modernized; passing source tests with newer libraries does not update those pins.
+CI installs the package with minimum supported NumPy/Pillow/SciPy versions on
+Python 3.9 and current compatible versions on Python 3.10 and 3.13. It also checks
+imports from the installed package outside the source checkout.
