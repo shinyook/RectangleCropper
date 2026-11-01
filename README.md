@@ -2,24 +2,53 @@
 
 **Find objects on simple backgrounds. Save separate crops or transparent cutouts.**
 
-[![PyPI](https://img.shields.io/pypi/v/rectcropper.svg)](https://pypi.org/project/rectcropper/)
+[![PyPI](https://raw.githubusercontent.com/shinyook/rectcropper/master/docs/images/badges/pypi.svg)](https://pypi.org/project/rectcropper/)
 [![Tests](https://github.com/shinyook/rectcropper/actions/workflows/tests.yml/badge.svg)](https://github.com/shinyook/rectcropper/actions/workflows/tests.yml)
-[![Python](https://img.shields.io/pypi/pyversions/rectcropper.svg)](https://pypi.org/project/rectcropper/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/shinyook/rectcropper/blob/master/LICENSE)
-
-![One input image becomes three independent object cutouts](https://raw.githubusercontent.com/shinyook/rectcropper/master/docs/images/overview.png)
+[![Python](https://raw.githubusercontent.com/shinyook/rectcropper/master/docs/images/badges/python.svg)](https://pypi.org/project/rectcropper/)
+[![License: MIT](https://raw.githubusercontent.com/shinyook/rectcropper/master/docs/images/badges/license.svg)](https://github.com/shinyook/rectcropper/blob/master/LICENSE)
 
 A small Python library and command line tool built on NumPy, Pillow, and SciPy.
 No model downloads or training. Best for product images, simple graphics, and
 objects surrounded by relatively uniform background colors.
 
-[Get started](#get-started) · [Output shapes](#choose-an-output-shape) ·
+[Real examples](#real-world-examples) · [Get started](#get-started) · [Output shapes](#choose-an-output-shape) ·
 [Detection controls](#control-detection-and-spacing) ·
 [Full reference](https://github.com/shinyook/rectcropper/blob/master/docs/reference.md)
 
 > **Release status:** PyPI **1.2.0** includes rectangular crops and detection
 > controls. Transparent object, circle, and ellipse output is merged on `master`
 > and awaits the next release. Install the latest source below to use those modes.
+
+## Real-world examples
+
+Extract a book cover from a store listing, a photo from a news page, or a product
+image from a catalog. These are the original examples from the project's 2021
+README; the screenshots show the historical results.
+
+### Book covers from a bookstore
+
+<img width="760" alt="Original bookstore example showing book covers extracted from a listing" src="https://user-images.githubusercontent.com/55838461/132948980-b6a3f9f4-57b7-4b42-bf38-86d6a287a2b5.png">
+
+### Photos from a news page
+
+<img width="760" alt="Original newspaper example showing photographs extracted from a page" src="https://user-images.githubusercontent.com/55838461/132949267-cb03e2a2-8923-4569-841f-517faa1992b2.png">
+
+<details>
+<summary>More original examples: marketplace, website, and image search</summary>
+
+### Marketplace products
+
+<img width="760" alt="Original marketplace example showing rectangular product crops" src="https://user-images.githubusercontent.com/55838461/132949225-345d9962-65c7-422b-81cb-331791ef64ac.png">
+
+### Website images
+
+<img width="760" alt="Original website image extraction example" src="https://user-images.githubusercontent.com/55838461/132949306-b966a0a3-9c26-4b5c-87e2-41da3b735ee4.png">
+
+### Image search results
+
+<img width="760" alt="Original image search example with multiple extracted pictures" src="https://user-images.githubusercontent.com/55838461/132949483-b1fb9845-e08a-4b9a-85eb-71cdc9cebdde.png">
+
+</details>
 
 ## Get started
 
@@ -53,6 +82,14 @@ Matching filenames are overwritten; unrelated or leftover files are not removed.
 
 The helper and CLI use **RGB border detection** by default. Minimum width and
 height default to **100 × 100**; lower them for smaller objects, as shown above.
+
+## How cropping works
+
+![One input image becomes three independent object cutouts](https://raw.githubusercontent.com/shinyook/rectcropper/master/docs/images/overview.png)
+
+The diagrams below use reproducible synthetic inputs to make each option's effect
+clear. Real photographs still need a background that the color heuristic can
+separate from the object.
 
 ## Choose an output shape
 
