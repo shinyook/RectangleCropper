@@ -291,17 +291,7 @@ class RectangleImageCrop:
 
         RGBA crops saved as JPEG are composited onto white.
         """
-        directory = Path(saved_path)
-        directory.mkdir(parents=True, exist_ok=True)
-        image_format = saved_format.upper()
-        if image_format == 'JPG':
-            image_format = 'JPEG'
-        for idx, image in enumerate(self.iter_crops(), 1):
-            if image_format == 'JPEG' and image.mode == 'RGBA':
-                background = Image.new('RGB', image.size, 'white')
-                background.paste(image, mask=image.getchannel('A'))
-                image = background
-            image.save(directory / f'{filename}_{idx}.{saved_format.lower()}', format=image_format)
+        _save_crops(self.iter_crops(), saved_path, filename, saved_format)
 
     def get_threshold_pixels(self):
         """Return a copy of detected intensities, or RGB triples in RGB modes."""
@@ -312,3 +302,18 @@ class RectangleImageCrop:
     def get_crop_points(self) -> list:
         """Return (left, top, right, bottom) boxes; right/bottom are exclusive."""
         return list(self.__save_points)
+
+
+def _save_crops(images, saved_path, filename, saved_format):
+    """Save an existing image iterable without mutating its images."""
+    directory = Path(saved_path)
+    directory.mkdir(parents=True, exist_ok=True)
+    image_format = saved_format.upper()
+    if image_format == 'JPG':
+        image_format = 'JPEG'
+    for idx, image in enumerate(images, 1):
+        if image_format == 'JPEG' and image.mode == 'RGBA':
+            background = Image.new('RGB', image.size, 'white')
+            background.paste(image, mask=image.getchannel('A'))
+            image = background
+        image.save(directory / f'{filename}_{idx}.{saved_format.lower()}', format=image_format)

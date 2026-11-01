@@ -3,6 +3,8 @@ from unittest.mock import patch
 
 from crop_support import CropFixture
 from scipy import ndimage
+from PIL import Image
+from rectcropper import RectangleCropper, crop_image
 
 import numpy as np
 
@@ -58,3 +60,29 @@ class ComponentOptimizationTests(CropFixture, unittest.TestCase):
         boxes.assert_not_called()
         self.assertEqual(list(cropper.iter_masks()), [])
         self.assertEqual(self.crop(cropper, min_area=10), [(80, 10, 100, 25), (80, 40, 100, 60)])
+
+
+class CropRenderingTests(CropFixture, unittest.TestCase):
+    def test_saving_and_returning_renders_each_mask_once(self):
+        self.open_array(self.rectangle())
+        original = RectangleCropper.iter_masks
+        with patch.object(RectangleCropper, 'iter_masks', autospec=True, side_effect=original) as masks:
+            images = crop_image(self.root/'source.png', output_dir=self.root/'out',
+                                min_crop_width=1, min_crop_height=1, output_shape='object')
+        self.assertEqual(masks.call_count, 1)
+        with Image.open(self.root/'out'/'source_1.png') as saved:
+            np.testing.assert_array_equal(np.array(saved), np.array(images[0]))
+
+    def test_jpeg_save_does_not_change_returned_alpha(self):
+        source = np.full((20, 30, 4), 255, dtype=np.uint8)
+        source[4:10, 3:12] = (100, 100, 100, 128)
+        path = self.root/'alpha.png'
+        Image.fromarray(source).save(path)
+        images = crop_image(path, output_dir=self.root/'out', output_format='jpeg',
+                            min_crop_width=1, min_crop_height=1, output_shape='object', padding=1)
+        self.assertEqual(images[0].mode, 'RGBA')
+        self.assertEqual(images[0].getpixel((1, 1)), (100, 100, 100, 128))
+        self.assertEqual(images[0].getpixel((0, 0))[3], 0)
+        with Image.open(self.root/'out'/'alpha_1.jpeg') as saved:
+            self.assertEqual(saved.mode, 'RGB')
+            self.assertEqual(saved.size, images[0].size)

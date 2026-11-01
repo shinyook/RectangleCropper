@@ -1,7 +1,7 @@
 """Simple entry points for rectangular image cropping."""
 from pathlib import Path
 
-from ._core import RectangleImageCrop
+from ._core import RectangleImageCrop, _save_crops
 
 RectangleCropper = RectangleImageCrop
 __all__ = ['RectangleCropper', 'RectangleImageCrop', 'crop_image']
@@ -21,7 +21,8 @@ def crop_image(image_path, *, output_dir=None, output_format='png', filename=Non
     cropper = RectangleCropper()
     cropper.open(image_path)
     cropper.crop(**options)
+    images = list(cropper.iter_crops())
     if output_dir is not None:
-        cropper.save(output_dir, filename if filename is not None else Path(image_path).stem,
-                     output_format)
-    return list(cropper.iter_crops())
+        _save_crops(images, output_dir,
+                    filename if filename is not None else Path(image_path).stem, output_format)
+    return images
