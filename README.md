@@ -1,9 +1,9 @@
 # rectcropper
 
 [![PyPI](https://img.shields.io/pypi/v/rectcropper.svg)](https://pypi.org/project/rectcropper/)
-[![Tests](https://github.com/shinyook/RectangleCropper/actions/workflows/tests.yml/badge.svg)](https://github.com/shinyook/RectangleCropper/actions/workflows/tests.yml)
+[![Tests](https://github.com/shinyook/rectcropper/actions/workflows/tests.yml/badge.svg)](https://github.com/shinyook/rectcropper/actions/workflows/tests.yml)
 [![Python](https://img.shields.io/pypi/pyversions/rectcropper.svg)](https://pypi.org/project/rectcropper/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/shinyook/RectangleCropper/blob/master/LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/shinyook/rectcropper/blob/master/LICENSE)
 
 Extract rectangular crops of connected objects from images with relatively uniform
 backgrounds. RectangleCropper uses NumPy masks and SciPy connected components;
@@ -246,11 +246,11 @@ connectivity checks, output pixels, EXIF orientation, and repeated operations.
 
 Releases use `.github/workflows/release.yml`: tests and builds run before uploading
 the wheel and source distribution through PyPI Trusted Publishing. Under PyPI
-account `shin6`, the publisher for project `rectcropper` must be registered for GitHub owner `shinyook`, repository `RectangleCropper`, workflow
+account `shin6`, the publisher for project `rectcropper` must be registered for GitHub owner `shinyook`, repository `rectcropper`, workflow
 `release.yml`, environment `pypi`. A published GitHub release triggers deployment;
 the manual workflow accepts a version tag for retries.
 
 ## License
 
-[MIT](https://github.com/shinyook/RectangleCropper/blob/master/LICENSE). Report reproducible bugs through
-[GitHub Issues](https://github.com/shinyook/RectangleCropper/issues).
+[MIT](https://github.com/shinyook/rectcropper/blob/master/LICENSE). Report reproducible bugs through
+[GitHub Issues](https://github.com/shinyook/rectcropper/issues).

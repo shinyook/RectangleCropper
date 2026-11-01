@@ -14,7 +14,7 @@ setuptools.setup(
     description="Crop image to rectangle",
     long_description=open('README.md', encoding='utf-8').read(),
     long_description_content_type='text/markdown',
-    url="https://github.com/shinyook/RectangleCropper",
+    url="https://github.com/shinyook/rectcropper",
     packages=setuptools.find_packages(),
     install_requires=install_requires,
     entry_points={'console_scripts': ['rectcropper=rectcropper.__main__:main']},
