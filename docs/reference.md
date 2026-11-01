@@ -213,6 +213,11 @@ if __name__ == '__main__':
 
 ## Performance
 
+See the [pipeline follow-up](https://github.com/shinyook/rectcropper/blob/master/docs/performance.md)
+for exact-output optimizations, allocation measurements, batch timings, and
+reproducible benchmark commands against the previous vectorized implementation.
+
+
 Version 1.1 replaces Python pixel traversal with vectorized masks and compiled
 connected-component labeling. Local crop-only measurements against the corrected
 1.0 implementation in commit `b0dca54`:

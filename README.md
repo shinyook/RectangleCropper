@@ -200,6 +200,12 @@ Object mode retains an image-sized component label array until the next open/cro
 
 ## Performance and limits
 
+The latest source further reduces temporary arrays and discarded-component work.
+In follow-up fixtures it was 1.5–2.0× faster with retained objects and up to 4.35×
+faster when all specks were rejected; traced crop allocations fell about 32% for
+the border-mode two-object fixture. See the [measured follow-up and reproduction](https://github.com/shinyook/rectcropper/blob/master/docs/performance.md).
+
+
 The vectorized engine measured **111–137× faster** than the corrected earlier
 Python traversal on two synthetic fixtures. These are crop-only medians of three
 runs on Python 3.10/macOS, with matching boxes; import/open/save times are excluded.
