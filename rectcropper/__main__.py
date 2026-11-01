@@ -21,6 +21,8 @@ def main(argv=None):
     parser.add_argument('--background-color', metavar='R,G,B', action='append',
                         help='explicit RGB background; repeat for multiple colors')
     parser.add_argument('--format', choices=('png', 'jpeg', 'jpg'), default='png')
+    parser.add_argument('--shape', choices=('rectangle', 'object', 'circle', 'ellipse'),
+                        default='rectangle', help='output mask; PNG preserves transparency')
     parser.add_argument('--prefix', help='output filename prefix (default: input stem)')
     args = parser.parse_args(argv)
     try:
@@ -34,7 +36,8 @@ def main(argv=None):
                      min_area=args.min_area, padding=args.padding,
                      connectivity=args.connectivity, background_mode=args.background,
                      pixel_sensitivity=args.sensitivity, occupancy_rate=args.occupancy_rate,
-                     candidate_threshold_group=args.candidates, background_colors=colors)
+                     candidate_threshold_group=args.candidates, background_colors=colors,
+                     output_shape=args.shape)
         cropper.save(args.output, args.prefix if args.prefix is not None else args.image.stem, args.format)
     except (OSError, TypeError, ValueError, RuntimeError) as exc:
         parser.exit(1, f'rectcropper: {exc}\n')

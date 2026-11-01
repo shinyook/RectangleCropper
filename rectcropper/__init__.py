@@ -12,7 +12,8 @@ def crop_image(image_path, *, output_dir=None, output_format='png', filename=Non
     """Return a list of independent Pillow crops, optionally saving them.
 
     Uses RGB border detection by default. All crop() options, including size
-    filters, padding, and explicit background colors, can be passed directly.
+    filters, padding, output_shape, and explicit background colors, can be passed
+    directly. Nonrectangular output is RGBA; PNG preserves its transparency.
     Coordinates and detected thresholds are available through RectangleCropper
     when more control is needed. Existing files with matching names are replaced.
     """

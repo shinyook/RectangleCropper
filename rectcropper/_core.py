@@ -3,7 +3,7 @@ from pathlib import Path
 import warnings
 
 import numpy as np
-from PIL import Image, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageOps
 from scipy import ndimage
 
 
@@ -32,6 +32,9 @@ class RectangleImageCrop:
         self.__rgb = None
         self.__threshold_pixels = None
         self.__save_points = []
+        self.__labels = None
+        self.__component_labels = []
+        self.__output_shape = 'rectangle'
         self.__auto_threshold_detection = True
 
     def open(self, image_path, auto_threshold_detection=True) -> None:
@@ -47,6 +50,9 @@ class RectangleImageCrop:
                                           or 'transparency' in oriented.info else 'RGB')
         self.__rgb = np.asarray(self.__img.convert('RGB'))
         self.__save_points = []
+        self.__labels = None
+        self.__component_labels = []
+        self.__output_shape = 'rectangle'
         self.__threshold_pixels = None
         self.__auto_threshold_detection = auto_threshold_detection
 
@@ -84,7 +90,7 @@ class RectangleImageCrop:
     def crop(self, min_crop_width=100, min_crop_height=100, occupancy_rate=10,
              candidate_threshold_group=3, pixel_sensitivity=10, *,
              background_mode='legacy', background_colors=None, min_area=1,
-             padding=0, connectivity=4):
+             padding=0, connectivity=4, output_shape='rectangle'):
         """Detect foreground and store rectangles in historical left-to-right order.
 
         background_mode: 'legacy' (global RGB mean histogram) or 'border' (RGB
@@ -97,6 +103,12 @@ class RectangleImageCrop:
         min_area: minimum number of actual foreground pixels per component.
         padding: pixels added on all sides, clipped to image boundaries.
         connectivity: 4 for edge neighbors, 8 to include diagonal neighbors.
+
+        output_shape: 'rectangle' (default), 'object' (detected component only),
+            'circle' (centered inscribed circle), or 'ellipse' (fills crop box).
+            Nonrectangular output uses RGBA with transparent pixels outside the
+            mask; circle/ellipse geometry is applied after padding. Object output
+            retains one image-sized component label array until the next open/crop.
 
         Minimum width/height and area are tested before padding. Existing
         positional arguments keep their original meaning. No file is written.
@@ -114,6 +126,8 @@ class RectangleImageCrop:
             raise ValueError('connectivity must be 4 or 8')
         if background_mode not in ('legacy', 'border'):
             raise ValueError("background_mode must be 'legacy' or 'border'")
+        if output_shape not in ('rectangle', 'object', 'circle', 'ellipse'):
+            raise ValueError("output_shape must be 'rectangle', 'object', 'circle', or 'ellipse'")
         colors = None
         if background_colors is not None:
             colors = np.asarray(background_colors)
@@ -138,6 +152,9 @@ class RectangleImageCrop:
             warnings.warn('pixel_sensitivity is outside the recommended range of 5 to 10.')
 
         self.__save_points = []
+        self.__labels = None
+        self.__component_labels = []
+        self.__output_shape = 'rectangle'
         self.__threshold_pixels = None
         height, width = self.__rgb.shape[:2]
         if colors is None and background_mode == 'legacy':
@@ -173,15 +190,62 @@ class RectangleImageCrop:
             first_row = rows.start + np.flatnonzero(labels[rows, cols.start] == label)[0]
             box = (max(0, cols.start - padding), max(0, rows.start - padding),
                    min(width, cols.stop + padding), min(height, rows.stop + padding))
-            results.append(((cols.start, int(first_row)), box))
-        self.__save_points = [box for _, box in sorted(results)]
+            results.append(((cols.start, int(first_row)), box, label))
+        results.sort()
+        self.__save_points = [box for _, box, _ in results]
+        self.__output_shape = output_shape
+        if output_shape == 'object':
+            self.__labels = labels
+            self.__component_labels = [label for _, _, label in results]
+
+    def iter_masks(self):
+        """Yield independent L-mode masks aligned with crop boxes and output shape.
+
+        Values are 0 outside and 255 inside the selected component or geometry.
+        Source alpha is not included in these binary masks; iter_crops combines
+        the mask with the original alpha. Rectangle masks are fully opaque.
+        """
+        if self.__img is None:
+            raise RuntimeError('open method must be called before iter_masks.')
+        for index, box in enumerate(self.__save_points):
+            left, top, right, bottom = box
+            width, height = right - left, bottom - top
+            if self.__output_shape == 'object':
+                selected = self.__labels[top:bottom, left:right] == self.__component_labels[index]
+                yield Image.fromarray(selected.astype(np.uint8) * 255)
+            else:
+                mask = Image.new('L', (width, height),
+                                 255 if self.__output_shape == 'rectangle' else 0)
+                if self.__output_shape in ('circle', 'ellipse'):
+                    if self.__output_shape == 'circle':
+                        size = min(width, height)
+                        x, y = (width - size) // 2, (height - size) // 2
+                        bounds = (x, y, x + size - 1, y + size - 1)
+                    else:
+                        bounds = (0, 0, width - 1, height - 1)
+                    draw = ImageDraw.Draw(mask)
+                    if bounds[0] == bounds[2] or bounds[1] == bounds[3]:
+                        draw.rectangle(bounds, fill=255)
+                    else:
+                        draw.ellipse(bounds, fill=255)
+                yield mask
 
     def iter_crops(self):
-        """Yield independent Pillow images without saving all crops to disk."""
+        """Yield independent Pillow crops; shaped output is RGBA.
+
+        Background, holes, and neighboring components are transparent in object
+        mode. Existing source alpha is multiplied by the binary output mask.
+        """
         if self.__img is None:
             raise RuntimeError('open method must be called before iter_crops.')
-        for box in self.__save_points:
-            yield self.__img.crop(box)
+        if self.__output_shape == 'rectangle':
+            for box in self.__save_points:
+                yield self.__img.crop(box)
+        else:
+            for box, mask in zip(self.__save_points, self.iter_masks()):
+                image = self.__img.crop(box).convert('RGBA')
+                image.putalpha(ImageChops.multiply(image.getchannel('A'), mask))
+                yield image
 
     def save(self, saved_path, filename, saved_format) -> None:
         """Save crops as filename_1.ext, creating the output directory if needed.

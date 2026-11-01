@@ -137,10 +137,71 @@ Existing positional arguments retain their order; new options are keyword-only.
 | `min_area` | `1` | Minimum actual foreground pixels per component |
 | `padding` | `0` | Extra pixels on each side, clipped to the image |
 | `connectivity` | `4` | `4` for edge neighbors, `8` to include diagonal neighbors |
+| `output_shape` | `'rectangle'` | `rectangle`, `object`, `circle`, or `ellipse` |
 
 Dimension and area filters apply **before** padding. Padded boxes may overlap;
 components are not merged. In RGB modes, a pixel matches a background color only
 when every channel is within `pixel_sensitivity` of that color.
+
+## Transparent cutouts and geometric masks
+
+![Input, rectangle, object outline, circle, and ellipse outputs](https://raw.githubusercontent.com/shinyook/rectcropper/master/docs/images/shape-masks.png)
+
+Checkerboard regions are transparent. In the second row, object mode isolates the
+orange ring and excludes the separate purple component inside its bounding box.
+
+Keep the detected object's outline, including its holes, and make the surrounding
+background transparent:
+
+```python
+from rectcropper import crop_image
+
+images = crop_image(
+    'input.png', output_shape='object', output_dir='cutouts',
+    min_crop_width=40, min_crop_height=40, padding=8,
+)
+```
+
+```sh
+rectcropper input.png -o cutouts --shape object --min-width 40 --min-height 40
+rectcropper input.png -o circles --shape circle
+rectcropper input.png -o ellipses --shape ellipse
+```
+
+| `output_shape` / `--shape` | Output |
+| --- | --- |
+| `rectangle` (default) | Original bounding-box crop; existing behavior |
+| `object` | RGBA crop containing only that detected connected component |
+| `circle` | RGBA crop with a centered circle of diameter `min(width, height)` |
+| `ellipse` | RGBA crop with an ellipse filling the crop box |
+
+Masks keep the same rectangular canvas and crop coordinates. Circle/ellipse
+geometry is applied to the **padded** crop box and can cut off parts of the object;
+these geometric masks do not remove background inside the selected geometry.
+Object mode removes background, holes, and other detected components even when
+their bounding boxes overlap. Padding around the object is transparent. Existing
+source alpha is preserved inside the selected region; masks have hard pixel edges,
+without feathering or antialiasing. Use PNG to preserve transparency; JPEG flattens
+it onto white.
+
+The class exposes independent, aligned Pillow `L` masks with values 0/255:
+
+```python
+from rectcropper import RectangleCropper
+
+cropper = RectangleCropper()
+cropper.open('input.png')
+cropper.crop(background_mode='border', output_shape='object')
+for box, mask, image in zip(cropper.get_crop_points(),
+                            cropper.iter_masks(), cropper.iter_crops()):
+    print(box, mask.size, image.mode)  # mask selects pixels; image includes source alpha
+```
+
+`iter_masks()` reflects the last crop's `output_shape` and excludes original alpha.
+Masks/results are reset by `open()` and recomputed by `crop()`. Object mode retains
+one image-sized integer component array until the next open/crop; the default and
+geometric modes do not retain it. Shape quality still depends on the existing
+background-color heuristic, not a learned segmentation model.
 
 ## Coordinates and output
 
