@@ -7,6 +7,33 @@ from PIL import Image, ImageChops, ImageDraw, ImageOps
 from scipy import ndimage
 
 
+def _rounded_intensity(rgb):
+    """Exact rounded RGB mean without a floating-point HxWx3 reduction."""
+    total = np.add(rgb[..., 0], rgb[..., 1], dtype=np.uint16)
+    np.add(total, rgb[..., 2], out=total)
+    np.add(total, 1, out=total)
+    np.floor_divide(total, 3, out=total)
+    return total.astype(np.uint8)
+
+
+def _rgb_foreground(rgb, colors, sensitivity):
+    """Match RGB ranges with three reusable HxW boolean buffers."""
+    foreground = np.ones(rgb.shape[:2], dtype=bool)
+    matched = np.empty_like(foreground)
+    scratch = np.empty_like(foreground)
+    for color in colors:
+        matched.fill(True)
+        for channel in range(3):
+            value = int(color[channel])
+            np.greater_equal(rgb[..., channel], max(0, value - sensitivity), out=scratch)
+            np.logical_and(matched, scratch, out=matched)
+            np.less_equal(rgb[..., channel], min(255, value + sensitivity), out=scratch)
+            np.logical_and(matched, scratch, out=matched)
+        np.logical_not(matched, out=matched)
+        np.logical_and(foreground, matched, out=foreground)
+    return foreground
+
+
 class ImageThresholdUtil:
     @staticmethod
     def get_threshold_pixels(row, col, image, rep_count, target_rate):
@@ -158,20 +185,19 @@ class RectangleImageCrop:
         self.__threshold_pixels = None
         height, width = self.__rgb.shape[:2]
         if colors is None and background_mode == 'legacy':
-            intensity = np.rint(self.__rgb.mean(axis=2)).astype(np.uint8)
+            intensity = _rounded_intensity(self.__rgb)
             thresholds = ImageThresholdUtil.get_threshold_pixels(
                 width, height, intensity, candidate_threshold_group, occupancy_rate)
-            foreground = np.ones((height, width), dtype=bool)
-            intensity = intensity.astype(np.int16)
+            lookup = np.ones(256, dtype=bool)
             for value in thresholds:
-                foreground &= np.abs(intensity - int(value)) > pixel_sensitivity
+                lower = max(0, int(value) - pixel_sensitivity)
+                upper = min(255, int(value) + pixel_sensitivity)
+                lookup[lower:upper + 1] = False
+            foreground = lookup[intensity]
         else:
             thresholds = colors if colors is not None else self.__border_colors(
                 candidate_threshold_group, occupancy_rate)
-            foreground = np.ones((height, width), dtype=bool)
-            rgb = self.__rgb.astype(np.int16)
-            for color in thresholds:
-                foreground &= np.any(np.abs(rgb - color) > pixel_sensitivity, axis=2)
+            foreground = _rgb_foreground(self.__rgb, thresholds, pixel_sensitivity)
         self.__threshold_pixels = thresholds
         if len(thresholds) == 0:
             raise RuntimeError('threshold pixels are empty. No threshold pixels were detected. '
