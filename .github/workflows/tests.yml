@@ -1,0 +1,32 @@
+name: Crop regression tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - python: '3.9'
+            dependencies: legacy
+          - python: '3.10'
+            dependencies: current
+          - python: '3.13'
+            dependencies: current
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install published dependency versions
+        if: matrix.dependencies == 'legacy'
+        run: python -m pip install -r requirements.txt
+      # Exercise the source with current libraries without changing package pins.
+      - name: Install current dependencies
+        if: matrix.dependencies == 'current'
+        run: python -m pip install numpy pillow
+      - name: Run regression tests
+        run: python -m unittest discover -s tests -v

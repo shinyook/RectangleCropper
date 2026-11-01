@@ -38,14 +38,13 @@ class ImageThresholdUtil:
             Output array which has threshold points
         """
         area = row * col
-        rep_count = rep_count * -1
-        _, counts = np.unique(image, return_counts=True)
-        parted_ind = np.argpartition(counts, rep_count)[rep_count:]
-        ratio_counts = counts[parted_ind] / area * 100
-        threshold_pixels = (ratio_counts > target_rate).nonzero()[0]
-        if threshold_pixels is None:
-            return []
-        return parted_ind[threshold_pixels]
+        values, counts = np.unique(image, return_counts=True)
+        candidate_count = min(rep_count, len(values))
+        if candidate_count == 0:
+            return values[:0]
+        candidate_indices = np.argsort(counts, kind='stable')[-candidate_count:]
+        ratio_counts = counts[candidate_indices] / area * 100
+        return values[candidate_indices[ratio_counts > target_rate]]
 
 
 class RectangleImageCrop:
@@ -57,17 +56,16 @@ class RectangleImageCrop:
     and the average of the RGB values is calculated and the pixels are merged into one.
     """
 
-    __pix, __img = None, None
-    __row, __col = None, None
-    __img_field = None, None
-    __min_width, __min_height = None, None
-    __direction_row = [0, 1, 0, -1]
-    __direction_col = [1, 0, -1, 0]
-    __pixel_sensitivity = 5
-    __occupancy_rate = 10
-    __candidate_threshold_group = 3
-    __threshold_pixels = None
-    __save_points = []
+    __direction_row = (0, 1, 0, -1)
+    __direction_col = (1, 0, -1, 0)
+
+    def __init__(self):
+        self.__img = None
+        self.__pix = None
+        self.__row = self.__col = None
+        self.__img_field = None
+        self.__threshold_pixels = None
+        self.__save_points = []
 
     def open(self, image_path, auto_threshold_detection=True) -> None:
         """
@@ -83,7 +81,10 @@ class RectangleImageCrop:
         :return: None
             There is no return value. It is assigned to a class internal variable.
         """
-        self.__img = Image.open(image_path).convert('RGB')
+        with Image.open(image_path) as image:
+            self.__img = image.convert('RGB')
+        self.__save_points = []
+        self.__threshold_pixels = None
         self.__row, self.__col = self.__img.size
         self.__numpy_mean_variant()
 
@@ -95,7 +96,7 @@ class RectangleImageCrop:
         :return: None
             There is no return value. It is assigned to a class internal variable.
         """
-        self.__img_field = np.zeros((self.__col, self.__row))
+        self.__img_field = np.zeros((self.__col, self.__row), dtype=bool)
         average_pixel_values = np.mean(np.array(self.__img), axis=2, keepdims=True)
         self.__pix = np.rint(np.concatenate([average_pixel_values], axis=2))
 
@@ -107,11 +108,11 @@ class RectangleImageCrop:
         :return: bool
             It returns True or False according to the verification result.
         """
-        x1, y1 = upper_left_point
-        x2, y2 = bottom_right_point
-        height = y2 - y1
-        width = x2 - x1
-        return width > self.__min_width and height > self.__min_height
+        row1, col1 = upper_left_point
+        row2, col2 = bottom_right_point
+        width = col2 - col1
+        height = row2 - row1
+        return width >= self.__min_width and height >= self.__min_height
 
     def __validate_image_pixel(self, row, col):
         """
@@ -126,14 +127,16 @@ class RectangleImageCrop:
             Returns a list containing the coordinate values of the image, or False.
         """
         self.__img_field[row][col] = 1
-        temp_upper_bottom_points = []
-        point = [row, col]
+        min_row = max_row = row
+        min_col = max_col = col
         q = deque()
         q.append((row, col))
-        temp_upper_bottom_points.append(point)
         while q:
             row_x, row_y = q.popleft()
-            point = [row_x, row_y]
+            min_row = min(min_row, row_x)
+            max_row = max(max_row, row_x)
+            min_col = min(min_col, row_y)
+            max_col = max(max_col, row_y)
             for i in range(4):
                 mx = row_x + self.__direction_row[i]
                 my = row_y + self.__direction_col[i]
@@ -141,7 +144,8 @@ class RectangleImageCrop:
                     if self.__img_field[mx][my] == 0 and self.__validate_pixel(mx, my):
                         self.__img_field[mx][my] = 1
                         q.append((mx, my))
-        temp_upper_bottom_points.append(point)
+        # Pillow crop boxes exclude the right and bottom edges.
+        temp_upper_bottom_points = [[min_row, min_col], [max_row + 1, max_col + 1]]
         if self.__validate_image_size(temp_upper_bottom_points[0], temp_upper_bottom_points[1]):
             return temp_upper_bottom_points
         else:
@@ -234,35 +238,40 @@ class RectangleImageCrop:
         if pixel_sensitivity <= 0:
             raise ValueError("pixel_sensitivity must be a positive. bigger than 0")
 
-        if self.__occupancy_rate < 7:
+        if occupancy_rate < 7:
             warnings.warn(
                 "occupancy_rate is too low. Performance degradation is possible. "
                 "It is recommended to have a value of 10 or more.",)
-        if self.__candidate_threshold_group > 5:
+        if candidate_threshold_group > 5:
             warnings.warn(
                 "candidate_threshold_group is too large. Performance degradation is possible. "
                 "It is recommended to have a value of 5 or smaller.",
             )
 
-        if self.__pixel_sensitivity > 10:
+        if pixel_sensitivity > 10:
             warnings.warn(
                 "pixel_sensitivity is too large. Performance degradation is possible. "
                 "effective range too large. The drop in accuracy can be large. "
                 "It is recommended to have a value of between 5 and 10")
 
-        if self.__pixel_sensitivity < 5:
+        if pixel_sensitivity < 5:
             warnings.warn(
                 "pixel_sensitivity is too small. Performance degradation is possible. "
                 "effective range too large. The drop in accuracy can be large. "
                 "It is recommended to have a value of between 5 and 10")
 
-        self.__min_width = min_crop_height
-        self.__min_height = min_crop_width
+        if self.__img is None:
+            raise RuntimeError("open method must be called before crop.")
+
+        self.__save_points = []
+        self.__img_field.fill(False)
+        self.__min_width = min_crop_width
+        self.__min_height = min_crop_height
         self.__occupancy_rate = occupancy_rate
         self.__candidate_threshold_group = candidate_threshold_group
         self.__pixel_sensitivity = pixel_sensitivity
         self.__threshold_pixels = ImageThresholdUtil.get_threshold_pixels(self.__row, self.__col, self.__pix, self.__candidate_threshold_group, self.__occupancy_rate)
-        if not self.__threshold_pixels:
+        if self.__threshold_pixels.size == 0:
             raise RuntimeError("threshold pixels are empty. No threshold pixels were detected. "
                                "drop a occupancy_rate value")
         self.__iterate_pixel()
