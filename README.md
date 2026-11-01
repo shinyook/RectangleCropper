@@ -146,6 +146,36 @@ transparent; default rectangle padding keeps the original image pixels. Padded
 boxes can overlap and are not merged. Crops are fitted independently in the
 figures; the padding comparison uses the same pixel scale and shows canvas borders.
 
+## Process many files (latest source)
+
+`crop_images()` saves files and yields small metadata results instead of returning
+all images in memory. Serial execution is the default; opt into processes for
+larger workloads:
+
+```python
+from pathlib import Path
+from rectcropper import crop_images
+
+if __name__ == '__main__':
+    for result in crop_images(
+        Path('inputs').glob('*.png'),
+        output_dir='crops',
+        workers=2,
+        max_pending=4,
+        min_crop_width=40,
+        min_crop_height=40,
+    ):
+        print(result.input_path, result.crop_points, result.output_paths)
+```
+
+Results follow input order. Each input gets an indexed subdirectory, such as
+`crops/000000-photo/photo_1.png`, so identical stems within the batch do not collide.
+Only `max_pending` tasks are submitted at once. The `__main__` guard is required
+for spawn-based process workers in scripts; serial mode (`workers=1`) avoids that
+startup overhead. Parallel execution is not a speed guarantee for small batches.
+See the [batch reference](https://github.com/shinyook/rectcropper/blob/master/docs/reference.md#batch-processing)
+for errors, cleanup, and overwrite behavior. This API is not in PyPI 1.2.0.
+
 ## Need coordinates or masks?
 
 Use the class directly for repeated calls, metadata, or processing one crop at a

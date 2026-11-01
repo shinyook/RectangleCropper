@@ -2,9 +2,10 @@
 from pathlib import Path
 
 from ._core import RectangleImageCrop, _save_crops
+from ._batch import BatchResult, crop_images
 
 RectangleCropper = RectangleImageCrop
-__all__ = ['RectangleCropper', 'RectangleImageCrop', 'crop_image']
+__all__ = ['RectangleCropper', 'RectangleImageCrop', 'crop_image', 'BatchResult', 'crop_images']
 
 
 def crop_image(image_path, *, output_dir=None, output_format='png', filename=None,

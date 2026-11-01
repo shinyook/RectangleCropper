@@ -170,6 +170,47 @@ for image in cropper.iter_crops():
     # Pass image to OCR or other Pillow-compatible processing.
 ```
 
+## Batch processing
+
+```python
+from rectcropper import BatchResult, crop_images
+
+if __name__ == '__main__':
+    for result in crop_images(
+        ['first.png', 'second.png'], output_dir='crops', workers=2,
+        max_pending=4, output_format='png', on_error='collect',
+        min_crop_width=40, min_crop_height=40, output_shape='object',
+    ):
+        if result.error:
+            print(result.input_path, result.error)
+        else:
+            print(result.crop_points, result.output_paths)
+```
+
+- The function is a lazy iterator of immutable `BatchResult` records. `input_path`
+  and `output_paths` are resolved absolute `Path` values; `crop_points` is a tuple
+  of boxes. No Pillow images or masks are returned across process boundaries.
+- `workers=1` (default) runs serially without a pool; values above one use spawn
+  processes. Use the main guard in scripts. Spawn startup and disk contention may
+  outweigh parallelism for small workloads; benchmark your input set.
+- `max_pending` defaults to twice the worker count and bounds submitted tasks and
+  buffered results. Inputs are consumed incrementally and results preserve input
+  order, so a slow first input can delay later results.
+- Each input gets `output_dir/<zero-based-index, six digits>-<stem>/`. Repeated
+  stems within one call do not collide. Reusing the output directory for another
+  call can overwrite matching filenames; obsolete outputs are not removed.
+- `on_error='raise'` propagates the first error encountered in input order.
+  `on_error='collect'` yields that input's error string with empty box/path tuples,
+  then continues. Failed jobs can leave partial files.
+- Closing the iterator cancels queued jobs and waits for running jobs. Running
+  jobs may still write files. Do not share an output directory with concurrent
+  batch invocations.
+- Crop options match `crop_image()` and default to border detection. `output_dir`
+  is required, `output_format` defaults to PNG. Worker/pending counts must be
+  positive integers. Parallel processing is opt-in, not an approximation mode.
+- The package API is intended for importable Python scripts. For interactive
+  environments where spawn cannot import `__main__`, use `workers=1`.
+
 ## Performance
 
 Version 1.1 replaces Python pixel traversal with vectorized masks and compiled

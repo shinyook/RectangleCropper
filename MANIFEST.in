@@ -7,3 +7,5 @@ recursive-include docs/images *.png
 include docs/reference.md
 include docs/generate_visuals.py
 recursive-include docs/images *.svg
+include benchmarks/benchmark_pipeline.py
+include benchmarks/benchmark_batch.py
