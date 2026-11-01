@@ -1,219 +1,199 @@
 # RectangleCropper
 
+[![PyPI](https://img.shields.io/pypi/v/RectangleCropper.svg)](https://pypi.org/project/RectangleCropper/)
+[![Tests](https://github.com/shinyook/RectangleCropper/actions/workflows/tests.yml/badge.svg)](https://github.com/shinyook/RectangleCropper/actions/workflows/tests.yml)
+[![Python](https://img.shields.io/pypi/pyversions/RectangleCropper.svg)](https://pypi.org/project/RectangleCropper/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/shinyook/RectangleCropper/blob/master/LICENSE)
 
-[![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2Fleeshinyook%2FRectangleCropper&count_bg=%23F3007A&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false)](https://hits.seeyoufarm.com)
-![Generic badge](https://img.shields.io/badge/version-1.0.0-green.svg)
+Extract rectangular crops of connected objects from images with relatively uniform
+backgrounds. RectangleCropper uses NumPy masks and SciPy connected components;
+no model downloads or training are required.
 
-## Overview
+## Install
 
-`RectangleCropper` is a Python library that crops images into rectangles. The image to be cropped is detected through the rule base with pixel search algorithm.
-For example, the image below shows a bestseller in a bookstore, and you want to crop the image of the book. 
-RectangleCropper automatically detects the object area and crop it!
-Just pass the image to the RectangleCropper and it will be cropped like magic.
+Requires **Python 3.9 or newer**. NumPy, Pillow, and SciPy are installed automatically.
 
-#### 1. BookStore
-<img width="600" alt="스크린샷 2021-09-11 오후 10 12 09" src="https://user-images.githubusercontent.com/55838461/132948980-b6a3f9f4-57b7-4b42-bf38-86d6a287a2b5.png">
-
-#### 2. OpenMarket
-<img width="600" alt="스크린샷 2021-09-11 오후 10 13 07" src="https://user-images.githubusercontent.com/55838461/132949225-345d9962-65c7-422b-81cb-331791ef64ac.png">
-
-#### 3. NewPaper
-<img width="600" alt="스크린샷 2021-09-11 오후 10 13 33" src="https://user-images.githubusercontent.com/55838461/132949267-cb03e2a2-8923-4569-841f-517faa1992b2.png">
-
-#### 4. WebSite
-<img width="600" alt="스크린샷 2021-09-11 오후 10 15 34" src="https://user-images.githubusercontent.com/55838461/132949306-b966a0a3-9c26-4b5c-87e2-41da3b735ee4.png">
-
-#### 5. Google Image 
-<img width="600" alt="스크린샷 2021-09-11 오후 10 29 15" src="https://user-images.githubusercontent.com/55838461/132949483-b1fb9845-e08a-4b9a-85eb-71cdc9cebdde.png">
-
-
-There are many services that use square-based images. This library was created by combining a general rule-based algorithm and a pixel-based search algorithm, not advanced technologies such as computer vision.
-This library shows the best performance when the background color is one color or two or three. 
-So it doesn't have enough ability to cover the edge case. However, by applying this rule-based algorithm, 
-it became possible to apply rules according to the service. For example, 
-you can input guidelines for the size of the image to be cropped, and finely adjust the critical point required when cropping the image.
-
-
-## Requirements
-
-- Python >= 3
-- Works on Linux, Windows, macOS
-
-## Getting it
-
-The quick way:
-```code
-pip install RectangleCropper
+```sh
+python -m pip install --upgrade RectangleCropper
 ```
 
-## Getting Started
-
-```python
-import rectanglecropper.crop as rc
-
-cropper = rc.RectangleImageCrop()
-cropper.open(image_path='images/image1.png')
-cropper.crop()
-cropper.save(saved_path='cropimages', filename='image1', saved_format='jpeg')
-```
-Done!
-
-## Performance
-
-Version 1.1 replaces per-pixel Python traversal with NumPy background masks and
-SciPy connected-component labeling. The default mode preserves the legacy
-RGB-mean heuristic and crop ordering; a new RGB border mode is available below.
-
-Local crop-only measurements on two synthetic images (two rectangular objects,
-three repeats, median, Python 3.10 on macOS) against the corrected 1.0 code in
-commit `efb2ff7`:
-
-| Image | Previous | 1.1 | Speedup |
-| --- | --- | --- | --- |
-| 256 × 256 | 196.4 ms | 1.76 ms | 111× |
-| 512 × 512 | 790.1 ms | 5.79 ms | 137× |
-
-Both implementations returned identical boxes. Importing, opening, and saving
-images are excluded. These are reproducible fixture results, not guarantees for
-all images; images with many tiny components have additional per-component cost.
-SciPy adds an installation dependency and label storage proportional to image
-area. Run `python benchmarks/benchmark_crop.py --compare-with /path/to/old/crop.py`
-to compare locally.
-
-## RGB background detection and output controls
+## Quick start
 
 ```python
 from rectanglecropper.crop import RectangleImageCrop
 
 cropper = RectangleImageCrop()
-cropper.open('images/image1.png')
+cropper.open('input.png')
 cropper.crop(
-    background_mode='border',  # infer background RGB colors from the perimeter
+    background_mode='border',
     min_crop_width=40,
     min_crop_height=40,
-    min_area=1600,             # actual foreground pixels, not bounding-box area
-    padding=8,                # clipped to image boundaries
-    connectivity=8,           # include diagonal neighbors; default is 4
+    min_area=1600,
+    padding=8,
 )
-cropper.save('output/crops', 'object', 'png')  # creates directories as needed
-
-# Or work directly with independent Pillow images, one crop at a time:
-for image in cropper.iter_crops():
-    print(image.size)
+print(cropper.get_crop_points())  # [(left, top, right, bottom), ...]
+cropper.save('output/crops', 'object', 'png')
 ```
 
-Border mode groups outermost pixels into 16-level RGB bins, averages each bin's
-actual colors, and selects up to `candidate_threshold_group` bins whose share of
-the perimeter exceeds `occupancy_rate`. `pixel_sensitivity` is the allowed
-per-channel distance from those RGB colors. It can distinguish colors with equal
-RGB means, and a large central foreground object does not dominate the background
-estimate. Backgrounds should still be relatively uniform; an object covering the
-perimeter can bias the estimate. For complex backgrounds, set explicit colors:
+The output directory is created automatically. Crops are named `object_1.png`,
+`object_2.png`, and so on. Reusing the same directory and prefix overwrites files
+with matching names; files left over from an earlier, larger result set are not removed.
+
+The older usage remains supported:
 
 ```python
-cropper.open('images/image1.png', auto_threshold_detection=False)
+import rectanglecropper.crop as rc
+
+cropper = rc.RectangleImageCrop()
+cropper.open(image_path='input.png')
+cropper.crop()  # legacy background detection; minimum dimensions are 100 × 100
+cropper.save(saved_path='cropimages', filename='image1', saved_format='jpeg')
+```
+
+## Choose a background mode
+
+| Mode | How it works | When to use it |
+| --- | --- | --- |
+| `background_mode='legacy'` (default) | Selects common rounded RGB means across the whole image | Preserve existing behavior on simple backgrounds |
+| `background_mode='border'` | Selects common RGB colors around the outermost image perimeter | Objects surrounded by a relatively uniform background; colors with equal brightness |
+| `background_colors=[(255, 255, 255)]` | Uses explicit RGB colors instead of automatic detection | Background colors are known, or automatic detection is unsuitable |
+
+Border mode groups perimeter colors into 16-level bins and represents each bin
+with its actual mean RGB color. It selects up to `candidate_threshold_group`
+bins whose share of the perimeter is strictly greater than `occupancy_rate`.
+Legacy mode applies that percentage to all image pixels instead.
+
+Explicit colors override automatic detection:
+
+```python
+cropper.open('input.png', auto_threshold_detection=False)
 cropper.crop(
     background_colors=[(255, 255, 255), (240, 240, 240)],
     pixel_sensitivity=10,
+    min_crop_width=40,
+    min_crop_height=40,
 )
 ```
 
-Manual colors override automatic detection; disabling automatic detection now
-requires them. Existing positional crop arguments and the default `'legacy'`
-mode retain RGB-mean behavior. `pixel_sensitivity=0` enables exact matching.
-`occupancy_rate` accepts integers 1–99. Minimum dimensions and `min_area` are
-applied before padding; padded boxes can overlap and are not merged.
+Setting `auto_threshold_detection=False` requires `background_colors` on each
+`crop()` call. Background color channels must be integers from 0 to 255.
 
-EXIF orientation is applied when opening an image, so all coordinates refer to
-the displayed orientation. PNG crops retain alpha; JPEG crops are composited onto
-white. Detection uses RGB channels, including RGB stored under transparent
-pixels; transparency alone is not a foreground/background signal.
+## Crop options
 
-## Advanced Usage
+Existing positional arguments retain their order; new options are keyword-only.
 
-Is the image not cropping well? 
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `min_crop_width` | `100` | Minimum component width, inclusive |
+| `min_crop_height` | `100` | Minimum component height, inclusive |
+| `occupancy_rate` | `10` | Strict background frequency cutoff, integer 1–99 |
+| `candidate_threshold_group` | `3` | Maximum number of automatic background candidates |
+| `pixel_sensitivity` | `10` | Background tolerance, integer 0–255; 0 means exact matching |
+| `background_mode` | `'legacy'` | `'legacy'` or `'border'` |
+| `background_colors` | `None` | Nonempty sequence of RGB triples overriding automatic detection |
+| `min_area` | `1` | Minimum actual foreground pixels per component |
+| `padding` | `0` | Extra pixels on each side, clipped to the image |
+| `connectivity` | `4` | `4` for edge neighbors, `8` to include diagonal neighbors |
 
-Then I recommend adjusting the options of the crop method.
+Dimension and area filters apply **before** padding. Padded boxes may overlap;
+components are not merged. In RGB modes, a pixel matches a background color only
+when every channel is within `pixel_sensitivity` of that color.
 
-- min_crop 
+## Coordinates and output
+
+- `get_crop_points()` returns a new list of Pillow-style `(left, top, right, bottom)`
+  tuples. Right and bottom are exclusive. Results follow the historical scan
+  order: each component's leftmost column, then its first foreground row there.
+- `get_threshold_pixels()` returns a copy of a NumPy array: intensities in legacy
+  mode, or RGB triples in border/manual modes. Call it after `crop()`.
+- `open()` applies EXIF orientation and clears previous results. Coordinates refer
+  to the oriented image. Every `crop()` recomputes results with the supplied options.
+- PNG output retains alpha. JPEG output composites RGBA crops onto white.
+
+Use independent Pillow images directly without saving intermediate files:
+
 ```python
-import rectanglecropper.crop as rc
-
-cropper = rc.RectangleImageCrop()
-cropper.open(image_path='images/image1.png')
-cropper.crop(min_crop_width=1000, min_crop_height=1000)
-cropper.save(saved_path='cropimages', filename='image1', saved_format='jpeg')
+for image in cropper.iter_crops():
+    print(image.size)
+    # Pass image to OCR or other Pillow-compatible processing.
 ```
 
-The min_crop option above specifies the minimum size when cropping an image. 
-If the option is 1000, it is ignored if the cropped size is less than 1000.
+## Performance
 
-- occupancy_rate
-```python
-import rectanglecropper.crop as rc
+Version 1.1 replaces Python pixel traversal with vectorized masks and compiled
+connected-component labeling. Local crop-only measurements against the corrected
+1.0 implementation in commit `b0dca54`:
 
-cropper = rc.RectangleImageCrop()
-cropper.open(image_path='images/image1.png')
-cropper.crop(occupancy_rate=30)
-cropper.save(saved_path='cropimages', filename='image1', saved_format='jpeg')
-```
-<img width="600" alt="스크린샷 2021-09-11 오후 11 01 30" src="https://user-images.githubusercontent.com/55838461/132950475-bcf46042-4df6-4bb2-9a32-6f70e559d8c1.png">
+| Synthetic image | Previous | 1.1 | Speedup |
+| --- | --- | --- | --- |
+| 256 × 256 | 196.4 ms | 1.76 ms | 111× |
+| 512 × 512 | 790.1 ms | 5.79 ms | 137× |
 
+Measurements are medians of three runs on Python 3.10/macOS, using two solid
+rectangles on a white background. Both versions returned identical boxes.
+Importing, opening, and saving are excluded. These fixture results are not a
+guarantee for other images; highly fragmented images have per-component overhead.
+SciPy adds installation size and image-sized label storage.
 
-Probably, the background in this photo is black, and the images to be cropped are blue and yellow boxes. If you want to crop only the blue box here, you can enter the above option greater than 18. That is, the occupancy_rate can be filtered by determining the ratio based on the RGB channel.
-
-- pixel_sensitivity
-```python
-import rectanglecropper.crop as rc
-
-cropper = rc.RectangleImageCrop()
-cropper.open(image_path='images/image1.png')
-cropper.crop(pixel_sensitivity=5)
-cropper.save(saved_path='cropimages', filename='image1', saved_format='jpeg')
-```
-<img width="600" alt="스크린샷 2021-09-11 오후 11 10 30" src="https://user-images.githubusercontent.com/55838461/132950695-bddd0e43-7a16-4197-9aa9-9374b6698073.png">
-
-The image is composed of RGB channels, so if you look closely, continuous channels are connected. 
-If pixel sensitivity is given, the adjacent pixels are masked to see the same value. If the pixel values between the images to be cropped are not the same and are blurry, 
-it is recommended to try the above option.
-
-- candidate_threshold_group
-```python
-import rectanglecropper.crop as rc
-
-cropper = rc.RectangleImageCrop()
-cropper.open(image_path='images/image1.png')
-cropper.crop(candidate_threshold_group=5)
-cropper.save(saved_path='cropimages', filename='image1', saved_format='jpeg')
-```
-An image that is approached in units of pixels divides the area according to a threshold value.
-If there are various RGB channels in the area to be divided, it is recommended to adjust the above options.
-
-
-
-In fact, it is necessary to understand the option values related to this crop. 
-So, I set the initial value in advance, and if you need to customize it, 
-please set it not to deviate too much from this default value.
-
-## Finally
-
-Many features will be added in the future. 
-
-If you have any problems, I'd appreciate it if you could leave them in the issue.
-## Development and regression tests
-
-Run the regression suite from the repository root after installing NumPy, Pillow, and SciPy (`pip install -e .`):
+Reproduce the comparison from a source checkout:
 
 ```sh
-python -m unittest discover -s tests -v
+git show b0dca54:rectanglecropper/crop.py > /tmp/rectanglecropper-baseline.py
+python benchmarks/benchmark_crop.py --compare-with /tmp/rectanglecropper-baseline.py
 ```
 
-Crop boxes returned by `get_crop_points()` use Pillow's `(left, top, right, bottom)`
-convention: right and bottom are exclusive. Minimum crop dimensions are inclusive,
-so a crop exactly equal to `min_crop_width` or `min_crop_height` is accepted.
-Each `open()` clears previous results, and each `crop()` recomputes results for
-that image using the supplied options.
+## Limits and troubleshooting
 
-CI installs the package with minimum supported NumPy/Pillow/SciPy versions on
-Python 3.9 and current compatible versions on Python 3.10 and 3.13. It also checks
-imports from the installed package outside the source checkout.
+This is a background-color heuristic, not general-purpose segmentation or
+perspective correction. Border mode can be biased by objects covering the
+perimeter. Legacy mode can classify a large foreground object as background and
+cannot distinguish colors with equal RGB means. Textured backgrounds, shadows,
+and gradients may require explicit colors or a different segmentation approach.
+
+Transparency is preserved for output but is not a segmentation signal; detection
+uses RGB channels, including colors stored under transparent pixels. Touching
+objects form one connected component according to `connectivity`.
+
+If no background candidate exceeds the cutoff, `crop()` raises `RuntimeError`;
+lower `occupancy_rate` or set `background_colors`. If there are no foreground
+components passing the filters, the result is an empty list. Calling `crop()`
+before `open()` raises `RuntimeError`; invalid options raise `TypeError` or
+`ValueError`.
+
+## Upgrading from 1.0
+
+- Python 3.9+ is required. Fixed 2021 dependency pins are replaced with compatible
+  NumPy, Pillow, and SciPy ranges.
+- Default RGB-mean detection and positional crop arguments remain available.
+- Corrected bounds include the final row/column. Minimum dimensions are inclusive.
+- Results no longer leak between instances, opened images, or repeated crops.
+- Solid/black/multiple background colors no longer trigger the earlier indexing
+  and ambiguous-array errors.
+- `auto_threshold_detection=False` now requires explicit colors rather than being ignored.
+- EXIF orientation is now applied before detection.
+
+## Development
+
+```sh
+python -m pip install -e .
+python -m unittest discover -s tests -v
+python -m pip install build twine
+python -m build
+python -m twine check dist/*
+```
+
+CI tests minimum dependencies on Python 3.9 and current compatible dependencies
+on Python 3.10/3.13, including installed-package imports outside the checkout.
+Tests cover background selection, component bounds/order, independent random-mask
+connectivity checks, output pixels, EXIF orientation, and repeated operations.
+
+Releases use `.github/workflows/release.yml`: tests and builds run before uploading
+the wheel and source distribution through PyPI Trusted Publishing. The publisher
+must be registered for owner `shinyook`, repository `RectangleCropper`, workflow
+`release.yml`, environment `pypi`. A published GitHub release triggers deployment;
+the manual workflow accepts a version tag for retries.
+
+## License
+
+[MIT](https://github.com/shinyook/RectangleCropper/blob/master/LICENSE). Report reproducible bugs through
+[GitHub Issues](https://github.com/shinyook/RectangleCropper/issues).

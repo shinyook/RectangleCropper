@@ -9,7 +9,7 @@ setuptools.setup(
     name="RectangleCropper",
     version="1.1.0",
     license='MIT',
-    author="Shinyook Lee <tlsdbr97@gmail.com>",
+    author="Shinyook Lee",
     author_email="tlsdbr97@gmail.com",
     description="Crop image to rectangle",
     long_description=open('README.md', encoding='utf-8').read(),
