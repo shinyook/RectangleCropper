@@ -1,4 +1,8 @@
 import unittest
+from unittest.mock import patch
+
+from crop_support import CropFixture
+from scipy import ndimage
 
 import numpy as np
 
@@ -29,3 +33,28 @@ class MaskOptimizationTests(unittest.TestCase):
                 actual = _rgb_foreground(rgb, candidates, sensitivity)
                 np.testing.assert_array_equal(actual, expected)
         np.testing.assert_array_equal(rgb, original)
+
+
+class ComponentOptimizationTests(CropFixture, unittest.TestCase):
+    def scene(self):
+        image = np.full((80, 110), 255, dtype=np.uint8)
+        image[1:70:3, 1:70:3] = 100
+        image[10:25, 80:100] = 100
+        image[40:60, 80:100] = 100
+        return image
+
+    def test_remap_only_computes_retained_boxes_and_preserves_masks(self):
+        cropper = self.open_array(self.scene())
+        with patch('rectcropper._core.ndimage.find_objects', wraps=ndimage.find_objects) as boxes:
+            actual = self.crop(cropper, min_area=10, output_shape='object')
+        self.assertEqual(actual, [(80, 10, 100, 25), (80, 40, 100, 60)])
+        self.assertEqual(boxes.call_args.kwargs['max_label'], 2)
+        self.assertEqual([np.count_nonzero(np.array(mask)) for mask in cropper.iter_masks()], [300, 400])
+
+    def test_all_rejected_skips_box_calculation(self):
+        cropper = self.open_array(self.scene())
+        with patch('rectcropper._core.ndimage.find_objects') as boxes:
+            self.assertEqual(self.crop(cropper, min_area=1000, output_shape='object'), [])
+        boxes.assert_not_called()
+        self.assertEqual(list(cropper.iter_masks()), [])
+        self.assertEqual(self.crop(cropper, min_area=10), [(80, 10, 100, 25), (80, 40, 100, 60)])

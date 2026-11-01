@@ -206,6 +206,19 @@ class RectangleImageCrop:
         structure = ndimage.generate_binary_structure(2, 1 if connectivity == 4 else 2)
         labels, count = ndimage.label(foreground, structure=structure)
         areas = np.bincount(labels.ravel(), minlength=count + 1) if min_area > 1 else None
+        if areas is not None:
+            survivors = np.flatnonzero(areas[1:] >= min_area) + 1
+            if len(survivors) == 0:
+                self.__output_shape = output_shape
+                return
+            # Remapping costs an image pass. Reserve it for fragmented scenes
+            # where most components would otherwise need boxes and Python work.
+            if count >= 256 and len(survivors) <= count // 2:
+                mapping = np.zeros(count + 1, dtype=labels.dtype)
+                mapping[survivors] = np.arange(1, len(survivors) + 1)
+                labels = mapping[labels]
+                areas = np.concatenate(([0], areas[survivors]))
+                count = len(survivors)
         results = []
         for label, region in enumerate(ndimage.find_objects(labels, max_label=count), 1):
             rows, cols = region
