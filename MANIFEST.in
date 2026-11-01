@@ -4,3 +4,5 @@ include README.md
 recursive-include tests *.py
 include benchmarks/benchmark_crop.py
 recursive-include docs/images *.png
+include docs/reference.md
+include docs/generate_visuals.py
