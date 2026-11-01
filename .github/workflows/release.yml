@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing version tag to publish (for example v1.1.0)
+        description: Existing version tag to publish (for example v1.2.0)
         required: true
         type: string
 
@@ -38,7 +38,7 @@ jobs:
           python - <<'PY'
           import os
           from importlib.metadata import version
-          expected = 'v' + version('RectangleCropper')
+          expected = 'v' + version('rectcropper')
           if os.environ['RELEASE_TAG'] != expected:
               raise SystemExit(f'Release tag must be {expected}')
           PY
@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-22.04
     environment:
       name: pypi
-      url: https://pypi.org/project/RectangleCropper/
+      url: https://pypi.org/project/rectcropper/
     permissions:
       id-token: write
     steps:

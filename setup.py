@@ -6,8 +6,8 @@ install_requires = [
     'scipy>=1.10,<2',
 ]
 setuptools.setup(
-    name="RectangleCropper",
-    version="1.1.0",
+    name="rectcropper",
+    version="1.2.0",
     license='MIT',
     author="Shinyook Lee",
     author_email="tlsdbr97@gmail.com",
@@ -16,7 +16,8 @@ setuptools.setup(
     long_description_content_type='text/markdown',
     url="https://github.com/shinyook/RectangleCropper",
     packages=setuptools.find_packages(),
-    install_requires = install_requires,
+    install_requires=install_requires,
+    entry_points={'console_scripts': ['rectcropper=rectcropper.__main__:main']},
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

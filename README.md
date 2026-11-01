@@ -1,8 +1,8 @@
-# RectangleCropper
+# rectcropper
 
-[![PyPI](https://img.shields.io/pypi/v/RectangleCropper.svg)](https://pypi.org/project/RectangleCropper/)
+[![PyPI](https://img.shields.io/pypi/v/rectcropper.svg)](https://pypi.org/project/rectcropper/)
 [![Tests](https://github.com/shinyook/RectangleCropper/actions/workflows/tests.yml/badge.svg)](https://github.com/shinyook/RectangleCropper/actions/workflows/tests.yml)
-[![Python](https://img.shields.io/pypi/pyversions/RectangleCropper.svg)](https://pypi.org/project/RectangleCropper/)
+[![Python](https://img.shields.io/pypi/pyversions/rectcropper.svg)](https://pypi.org/project/rectcropper/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/shinyook/RectangleCropper/blob/master/LICENSE)
 
 Extract rectangular crops of connected objects from images with relatively uniform
@@ -14,29 +14,57 @@ no model downloads or training are required.
 Requires **Python 3.9 or newer**. NumPy, Pillow, and SciPy are installed automatically.
 
 ```sh
-python -m pip install --upgrade RectangleCropper
+python -m pip install --upgrade rectcropper
 ```
 
 ## Quick start
 
-```python
-from rectanglecropper.crop import RectangleImageCrop
+Use it from the terminal without writing Python:
 
-cropper = RectangleImageCrop()
-cropper.open('input.png')
-cropper.crop(
-    background_mode='border',
+```sh
+rectcropper input.png -o output/crops --min-width 40 --min-height 40 --padding 8
+```
+
+Or crop with one Python call; the result is a list of Pillow images:
+
+```python
+from rectcropper import crop_image
+
+images = crop_image('input.png', min_crop_width=40, min_crop_height=40)
+```
+
+Save crops in the same call:
+
+```python
+images = crop_image(
+    'input.png',
+    output_dir='output/crops',
     min_crop_width=40,
     min_crop_height=40,
-    min_area=1600,
     padding=8,
 )
-print(cropper.get_crop_points())  # [(left, top, right, bottom), ...]
+```
+
+`crop_image()` and the CLI use RGB border detection by default. Like the existing
+class API, they default to minimum dimensions of 100 × 100; smaller objects need
+lower dimension filters. The helper returns all crops in memory. For large batches,
+use `RectangleCropper.iter_crops()` to process one crop at a time.
+
+For coordinates, thresholds, or repeated calls, use the class directly:
+
+```python
+from rectcropper import RectangleCropper
+
+cropper = RectangleCropper()
+cropper.open('input.png')
+cropper.crop(background_mode='border', min_crop_width=40, min_crop_height=40)
+print(cropper.get_crop_points())
 cropper.save('output/crops', 'object', 'png')
 ```
 
-The output directory is created automatically. Crops are named `object_1.png`,
-`object_2.png`, and so on. Reusing the same directory and prefix overwrites files
+The output directory is created automatically. The helper and CLI use the input
+filename stem by default (`input_1.png`, `input_2.png`, ...); `filename` in the
+helper or `--prefix` in the CLI overrides it. Class `save()` uses its filename argument. Reusing the same directory and prefix overwrites files
 with matching names; files left over from an earlier, larger result set are not removed.
 
 The older usage remains supported:
@@ -49,6 +77,21 @@ cropper.open(image_path='input.png')
 cropper.crop()  # legacy background detection; minimum dimensions are 100 × 100
 cropper.save(saved_path='cropimages', filename='image1', saved_format='jpeg')
 ```
+
+## Command line
+
+```sh
+rectcropper input.png -o crops --min-width 40 --min-height 40
+rectcropper input.png -o crops --background-color 255,255,255 --min-area 1600
+rectcropper input.png -o crops --padding 8 --connectivity 8 --format jpeg
+python -m rectcropper --help
+```
+
+The CLI also accepts `--background border|legacy`, `--sensitivity`,
+`--occupancy-rate`, `--candidates`, and `--prefix`. Repeat `--background-color`
+for multiple explicit RGB colors. `rectcropper --help` lists all options.
+The default output directory is `crops`. Missing files and invalid options produce
+an error and a nonzero exit status; zero detections is a successful empty result.
 
 ## Choose a background mode
 
@@ -160,7 +203,21 @@ components passing the filters, the result is an empty list. Calling `crop()`
 before `open()` raises `RuntimeError`; invalid options raise `TypeError` or
 `ValueError`.
 
-## Upgrading from 1.0
+## Migrating from RectangleCropper
+
+The new distribution and preferred import package are both named `rectcropper`.
+The old `RectangleCropper` project remains a separate PyPI distribution. When
+migrating, uninstall it before installing the replacement because both provide
+the compatibility `rectanglecropper` module:
+
+```sh
+python -m pip uninstall RectangleCropper
+python -m pip install --upgrade rectcropper
+```
+
+Existing `rectanglecropper.crop.RectangleImageCrop` imports remain supported by a
+compatibility shim. New code can use `from rectcropper import crop_image` or
+`from rectcropper import RectangleCropper`.
 
 - Python 3.9+ is required. Fixed 2021 dependency pins are replaced with compatible
   NumPy, Pillow, and SciPy ranges.
@@ -188,8 +245,8 @@ Tests cover background selection, component bounds/order, independent random-mas
 connectivity checks, output pixels, EXIF orientation, and repeated operations.
 
 Releases use `.github/workflows/release.yml`: tests and builds run before uploading
-the wheel and source distribution through PyPI Trusted Publishing. The publisher
-must be registered for owner `shinyook`, repository `RectangleCropper`, workflow
+the wheel and source distribution through PyPI Trusted Publishing. Under PyPI
+account `shin6`, the publisher for project `rectcropper` must be registered for GitHub owner `shinyook`, repository `RectangleCropper`, workflow
 `release.yml`, environment `pypi`. A published GitHub release triggers deployment;
 the manual workflow accepts a version tag for retries.
 

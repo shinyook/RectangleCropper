@@ -30,4 +30,7 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Verify installed wheel outside checkout
         working-directory: /tmp
-        run: python -c "from rectanglecropper.crop import RectangleImageCrop; RectangleImageCrop()"
+        run: python -c "from rectcropper import RectangleCropper, crop_image; RectangleCropper()"
+      - name: Verify installed command
+        working-directory: /tmp
+        run: rectcropper --help
