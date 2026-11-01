@@ -25,22 +25,24 @@ def main():
     parser.add_argument('--workers', type=int, default=2)
     parser.add_argument('--repeats', type=int, default=3)
     args = parser.parse_args()
-    if min(args.files, args.size, args.workers, args.repeats) < 1:
-        parser.error('all counts must be positive')
+    if min(args.files, args.workers, args.repeats) < 1 or args.size < 8:
+        parser.error('counts must be positive and size must be at least 8')
     rng = np.random.default_rng(42)
     with TemporaryDirectory() as directory:
         root = Path(directory)
         data = np.full((args.size*3//4, args.size, 3), 255, dtype=np.uint8)
         height, width = data.shape[:2]
-        data[height//8:7*height//8, width//8:7*width//8] = rng.integers(
-            20, 190, (6*height//8, 6*width//8, 3), dtype=np.uint8)
+        top, bottom = height//8, 7*height//8
+        left, right = width//8, 7*width//8
+        data[top:bottom, left:right] = rng.integers(
+            20, 190, (bottom-top, right-left, 3), dtype=np.uint8)
         paths = []
         for index in range(args.files):
             path = root/f'input{index}.png'
             Image.fromarray(data).save(path)
             paths.append(path)
         reference = None
-        for workers in (1, args.workers):
+        for workers in dict.fromkeys((1, args.workers)):
             times = []
             for _ in range(args.repeats):
                 start = perf_counter()

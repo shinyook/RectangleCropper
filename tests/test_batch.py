@@ -56,8 +56,10 @@ class BatchTests(CropFixture, unittest.TestCase):
             self.assertIn('FileNotFoundError', results[0].error)
             self.assertEqual(results[0].output_paths, ())
             self.assertIsNone(results[1].error)
-        with self.assertRaises(FileNotFoundError):
-            list(crop_images(paths, output_dir=self.root/'raise', **self.options()))
+        for workers in (1, 2):
+            with self.assertRaises(FileNotFoundError):
+                list(crop_images(paths, output_dir=self.root/f'raise{workers}',
+                                 workers=workers, **self.options()))
 
     def test_input_consumption_is_bounded_and_close_cleans_up(self):
         paths = self.paths(4)
