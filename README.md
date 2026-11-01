@@ -2,7 +2,7 @@
 
 **Find objects on simple backgrounds. Save separate crops or transparent cutouts.**
 
-[![PyPI](https://raw.githubusercontent.com/shinyook/rectcropper/master/docs/images/badges/pypi.svg)](https://pypi.org/project/rectcropper/)
+[![PyPI](https://raw.githubusercontent.com/shinyook/rectcropper/master/docs/images/badges/pypi.svg?v=1.3.0)](https://pypi.org/project/rectcropper/)
 [![Tests](https://github.com/shinyook/rectcropper/actions/workflows/tests.yml/badge.svg)](https://github.com/shinyook/rectcropper/actions/workflows/tests.yml)
 [![Python](https://raw.githubusercontent.com/shinyook/rectcropper/master/docs/images/badges/python.svg)](https://pypi.org/project/rectcropper/)
 [![License: MIT](https://raw.githubusercontent.com/shinyook/rectcropper/master/docs/images/badges/license.svg)](https://github.com/shinyook/rectcropper/blob/master/LICENSE)
@@ -15,9 +15,9 @@ objects surrounded by relatively uniform background colors.
 [Detection controls](#control-detection-and-spacing) ·
 [Full reference](https://github.com/shinyook/rectcropper/blob/master/docs/reference.md)
 
-> **Release status:** PyPI **1.2.0** includes rectangular crops and detection
-> controls. Transparent object, circle, and ellipse output is merged on `master`
-> and awaits the next release. Install the latest source below to use those modes.
+> **Version 1.3.0** includes transparent object/circle/ellipse output, an optimized
+> exact-output pipeline, and bounded batch processing. Install or upgrade with pip
+> to use all features below.
 
 ## Real-world examples
 
@@ -55,11 +55,7 @@ README; the screenshots show the historical results.
 Python **3.9+** is required. Dependencies are installed automatically.
 
 ```sh
-# Latest published package
 python -m pip install --upgrade rectcropper
-
-# Latest source, including transparent shape output
-python -m pip install --upgrade "git+https://github.com/shinyook/rectcropper.git"
 ```
 
 Crop from the command line:
@@ -106,7 +102,7 @@ hole and excludes the separate purple object inside the ring's bounding box.
 | Circle | Applies a centered circle to the crop | `output_shape='circle'` / `--shape circle` |
 | Ellipse | Applies an ellipse that fills the crop box | `output_shape='ellipse'` / `--shape ellipse` |
 
-Transparent modes require the latest source until the next PyPI release:
+Transparent output is available in version 1.3.0 and newer:
 
 ```python
 images = crop_image(
@@ -146,7 +142,7 @@ transparent; default rectangle padding keeps the original image pixels. Padded
 boxes can overlap and are not merged. Crops are fitted independently in the
 figures; the padding comparison uses the same pixel scale and shows canvas borders.
 
-## Process many files (latest source)
+## Process many files
 
 `crop_images()` saves files and yields small metadata results instead of returning
 all images in memory. Serial execution is the default; opt into processes for
@@ -174,7 +170,7 @@ Only `max_pending` tasks are submitted at once. The `__main__` guard is required
 for spawn-based process workers in scripts; serial mode (`workers=1`) avoids that
 startup overhead. Parallel execution is not a speed guarantee for small batches.
 See the [batch reference](https://github.com/shinyook/rectcropper/blob/master/docs/reference.md#batch-processing)
-for errors, cleanup, and overwrite behavior. This API is not in PyPI 1.2.0.
+for errors, cleanup, and overwrite behavior. This API is available in version 1.3.0 and newer.
 
 ## Need coordinates or masks?
 
@@ -200,7 +196,7 @@ Object mode retains an image-sized component label array until the next open/cro
 
 ## Performance and limits
 
-The latest source further reduces temporary arrays and discarded-component work.
+Version 1.3.0 further reduces temporary arrays and discarded-component work.
 In follow-up fixtures it was 1.5–2.0× faster with retained objects and up to 4.35×
 faster when all specks were rejected; traced crop allocations fell about 32% for
 the border-mode two-object fixture. See the [measured follow-up and reproduction](https://github.com/shinyook/rectcropper/blob/master/docs/performance.md).

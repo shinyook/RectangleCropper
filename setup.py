@@ -7,11 +7,11 @@ install_requires = [
 ]
 setuptools.setup(
     name="rectcropper",
-    version="1.2.0",
+    version="1.3.0",
     license='MIT',
     author="Shinyook Lee",
     author_email="tlsdbr97@gmail.com",
-    description="Crop image to rectangle",
+    description="Extract image objects as crops and transparent cutouts",
     long_description=open('README.md', encoding='utf-8').read(),
     long_description_content_type='text/markdown',
     url="https://github.com/shinyook/rectcropper",
