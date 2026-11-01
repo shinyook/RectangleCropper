@@ -138,3 +138,20 @@ please set it not to deviate too much from this default value.
 Many features will be added in the future. 
 
 If you have any problems, I'd appreciate it if you could leave them in the issue.
+## Development and regression tests
+
+Run the regression suite from the repository root after installing NumPy and Pillow:
+
+```sh
+python -m unittest discover -s tests -v
+```
+
+Crop boxes returned by `get_crop_points()` use Pillow's `(left, top, right, bottom)`
+convention: right and bottom are exclusive. Minimum crop dimensions are inclusive,
+so a crop exactly equal to `min_crop_width` or `min_crop_height` is accepted.
+Each `open()` clears previous results, and each `crop()` recomputes results for
+that image using the supplied options.
+
+CI checks the original dependency versions on Python 3.9 and current NumPy/Pillow
+versions on Python 3.10 and 3.13. The package's dependency pins have not yet been
+modernized; passing source tests with newer libraries does not update those pins.
